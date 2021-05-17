@@ -23,35 +23,114 @@ package cmd
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+	"regexp"
+	"strings"
 
+	utils "github.com/l50/goutils"
 	"github.com/spf13/cobra"
 )
 
 // asnCmd represents the asn command
 var asnCmd = &cobra.Command{
 	Use:   "asn",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Discover and leverage ASNs associated with your target",
+	Long:  `Discover and leverage ASNs associated with your target`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("asn called")
+		targets, _ := cmd.Flags().GetString("targets")
+		targetsFile, err := fileToSlice(targets)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		amassOutput, err := amassIntel(targetsFile)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		asns, ipRanges := parseInput(amassOutput)
+		printOutputs(asns, ipRanges)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(asnCmd)
+	asnCmd.Flags().StringP("targets", "t", "", "Targets File")
+}
 
-	// Here you will define your flags and configuration settings.
+func fileToSlice(fileName string) ([]string, error) {
+	b, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(string(b), "\n"), nil
+}
 
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// asnCmd.PersistentFlags().String("foo", "", "A help for foo")
+func removeExtn(input string) string {
+	if len(input) > 0 {
+		if i := strings.LastIndex(input, "."); i > 0 {
+			input = input[:i]
+		}
+	}
+	return input
+}
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// asnCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+func amassIntel(targetsFile []string) ([]string, error) {
+	var amassOutput []string
+	for _, t := range targetsFile {
+		rawOut, err := utils.RunCommand("amass", "intel", "-org", removeExtn(t))
+		if err != nil {
+			return nil, err
+		}
+		// Split string on whitespace
+		out := strings.Fields(rawOut)
+		// Append split output into amassOutput
+		for _, f := range out {
+			amassOutput = append(amassOutput, f)
+		}
+	}
+	return amassOutput, nil
+}
+
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
+}
+
+func parseInput(amassOutput []string) ([]string, []string) {
+	ipRangeRegex := regexp.MustCompile(`^\d+\.\d+\.\d+\.\d+\/[0-9]{2}$`)
+	asnRegex := regexp.MustCompile(`^\d{5}`)
+	var ipRanges []string
+	var asns []string
+
+	for _, line := range amassOutput {
+		if ipRangeRegex.MatchString(line) {
+			if !stringInSlice(line, ipRanges) {
+				ipRanges = append(ipRanges, line)
+			}
+		} else if asnRegex.MatchString(line) {
+			if !stringInSlice(line, asns) {
+				asns = append(asns, line)
+			}
+		} else {
+			fmt.Print(line)
+		}
+	}
+	return asns, ipRanges
+}
+
+func printOutputs(asns []string, ipRanges []string) {
+	fmt.Println("ASNs Found")
+	fmt.Println("========================================")
+	for _, a := range asns {
+		fmt.Printf("%s\n", a)
+	}
+	fmt.Println("\nIP Ranges Found")
+	fmt.Println("========================================")
+	for _, i := range ipRanges {
+		fmt.Printf("%s\n", i)
+	}
 }
