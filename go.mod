@@ -13,6 +13,7 @@ require (
 	github.com/onsi/gomega v1.5.0 // indirect
 	github.com/pelletier/go-toml v1.9.1 // indirect
 	github.com/pkg/profile v0.0.0-20170413231811-06b906832ed0 // indirect
+	github.com/sirupsen/logrus v1.6.0 // indirect
 	github.com/spf13/afero v1.6.0 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/cobra v1.1.3

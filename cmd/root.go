@@ -23,15 +23,22 @@ package cmd
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"os"
-
-	"github.com/spf13/cobra"
+	"os/user"
+	"path/filepath"
 
 	homedir "github.com/mitchellh/go-homedir"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 var cfgFile string
+
+// Verbose flag
+var v string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -56,12 +63,47 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
+	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
+		if err := setUpLogs(os.Stdout, v); err != nil {
+			return err
+		}
+		return nil
+	}
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.recon.yaml)")
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
+	rootCmd.PersistentFlags().StringVarP(&v, "verbose", "v", logrus.WarnLevel.String(), "Log level (debug, info, warn, error, fatal, panic")
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
+
+// setUpLogs sets the log output, file, and level
+func setUpLogs(out io.Writer, level string) error {
+	user, err := user.Current()
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	homeDirectory := user.HomeDir
+	// Where to store the logs
+	var logLoc string = filepath.Join(homeDirectory, ".recon/log")
+	var logName string = "asn.log"
+
+	logrus.SetOutput(out)
+	lvl, err := logrus.ParseLevel(level)
+	if err != nil {
+		return err
+	}
+	logrus.SetLevel(lvl)
+	// Create path to log file and the log file itself if it doesn't exist
+	if _, err := os.Stat(filepath.Join(logLoc, logName)); os.IsNotExist(err) {
+		err = os.MkdirAll(logLoc, os.ModePerm)
+	}
+	file, err := os.OpenFile(filepath.Join(logLoc, logName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err == nil {
+		logrus.SetOutput(file)
+	} else {
+		logrus.Warn("Failed to log to file, using default stderr")
+	}
+	return nil
 }
 
 // initConfig reads in config file and ENV variables if set.

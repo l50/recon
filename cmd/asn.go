@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	utils "github.com/l50/goutils"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
@@ -43,6 +44,7 @@ var asnCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalln(err)
 		}
+		logrus.Info("Gathering ASNs and associated IP ranges for the following: ", targetsFile)
 		amassOutput, err := amassIntel(targetsFile)
 		if err != nil {
 			log.Fatalln(err)
@@ -57,12 +59,24 @@ func init() {
 	asnCmd.Flags().StringP("targets", "t", "", "Targets File")
 }
 
+func removeTrailingEmptyStringsInStringArray(sa []string) []string {
+	lastNonEmptyStringIndex := len(sa) - 1
+	for i := lastNonEmptyStringIndex; i >= 0; i-- {
+		if sa[i] == "" {
+			lastNonEmptyStringIndex--
+		} else {
+			break
+		}
+	}
+	return sa[0 : lastNonEmptyStringIndex+1]
+}
+
 func fileToSlice(fileName string) ([]string, error) {
 	b, err := ioutil.ReadFile(fileName)
 	if err != nil {
 		return nil, err
 	}
-	return strings.Split(string(b), "\n"), nil
+	return removeTrailingEmptyStringsInStringArray(strings.Split(string(b), "\n")), nil
 }
 
 func removeExtn(input string) string {
@@ -77,13 +91,14 @@ func removeExtn(input string) string {
 func amassIntel(targetsFile []string) ([]string, error) {
 	var amassOutput []string
 	for _, t := range targetsFile {
+		logrus.Debug("Running command to gather ASNs and their IP Ranges: amass intel -org ", removeExtn(t))
 		rawOut, err := utils.RunCommand("amass", "intel", "-org", removeExtn(t))
 		if err != nil {
 			return nil, err
 		}
 		// Split string on whitespace
 		out := strings.Fields(rawOut)
-		// Append split output into amassOutput
+		// Append split output to amassOutput
 		for _, f := range out {
 			amassOutput = append(amassOutput, f)
 		}
@@ -115,8 +130,6 @@ func parseInput(amassOutput []string) ([]string, []string) {
 			if !stringInSlice(line, asns) {
 				asns = append(asns, line)
 			}
-		} else {
-			fmt.Print(line)
 		}
 	}
 	return asns, ipRanges
@@ -126,11 +139,13 @@ func printOutputs(asns []string, ipRanges []string) {
 	fmt.Println("ASNs Found")
 	fmt.Println("========================================")
 	for _, a := range asns {
+		logrus.Info("ASN: ", a+"\n")
 		fmt.Printf("%s\n", a)
 	}
 	fmt.Println("\nIP Ranges Found")
 	fmt.Println("========================================")
 	for _, i := range ipRanges {
+		logrus.Info("IP Range: ", i+"\n")
 		fmt.Printf("%s\n", i)
 	}
 }
